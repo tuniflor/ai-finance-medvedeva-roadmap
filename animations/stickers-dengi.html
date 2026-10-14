@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Стикеры: деньги</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@800&display=block" rel="stylesheet">
+<style>
+  /* 1080×1350 · 6 с · петля: кадр 0 = кадр 6 с.
+     ?t=2.5 — заморозить кадр на нужной секунде (для превью). */
+  :root {
+    --bg-1: #F4F9FE;
+    --bg-2: #DDEBF8;
+    --bg-3: #CADFF2;
+    --ink: #1C2B4D;
+    --red: #E2332B;
+    --red-dark: #C9271F;
+    --shadow: 22, 44, 84;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #CADFF2; }
+  body { display: grid; place-items: center; }
+
+  #stage {
+    position: relative;
+    width: 1080px; height: 1350px;
+    overflow: hidden;
+    background:
+      radial-gradient(ellipse 75% 60% at 50% 46%, var(--bg-1) 0%, var(--bg-2) 62%, var(--bg-3) 100%);
+    perspective: 2200px;
+    transform-origin: 0 0;
+    flex: none;
+  }
+
+  .card {
+    position: absolute; left: 0; top: 0;
+    width: 560px; height: 560px;
+    margin: -280px 0 0 -280px;
+    border-radius: 10px;
+    will-change: transform, box-shadow;
+    transform-style: flat;
+    backface-visibility: hidden;
+  }
+  .paper {
+    position: absolute; inset: 0;
+    border-radius: inherit;
+    overflow: hidden;
+    background:
+      /* клеевая полоса сверху и лёгкий изгиб листа снизу */
+      linear-gradient(to bottom,
+        rgba(0,0,0,.045) 0%, rgba(0,0,0,.045) 13%, rgba(0,0,0,0) 15%,
+        rgba(0,0,0,0) 78%, rgba(0,0,0,.06) 100%),
+      var(--paper);
+  }
+  .paper svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .sheen {
+    position: absolute; inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background:
+      linear-gradient(var(--sa, 128deg),
+        rgba(255,255,255,.75) 0%, rgba(255,255,255,.18) 22%,
+        rgba(255,255,255,0) 40%, rgba(255,255,255,0) 72%,
+        rgba(255,255,255,.12) 100%);
+    mix-blend-mode: soft-light;
+  }
+  .edge {
+    position: absolute; inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    box-shadow:
+      inset 0 2px 0 rgba(255,255,255,.7),
+      inset 0 -3px 0 rgba(0,0,0,.06);
+  }
+  .card.top .paper {
+    background:
+      linear-gradient(to bottom,
+        rgba(120,0,0,.12) 0%, rgba(120,0,0,.12) 13%, rgba(120,0,0,0) 15%,
+        rgba(0,0,0,0) 76%, rgba(90,0,0,.14) 100%),
+      radial-gradient(ellipse 90% 80% at 32% 25%, #EC4A40 0%, var(--red) 55%, var(--red-dark) 100%);
+  }
+  .card.top .sheen { mix-blend-mode: screen; opacity: .55; }
+  .card.top .edge {
+    box-shadow:
+      inset 0 2px 0 rgba(255,190,180,.55),
+      inset 0 -4px 0 rgba(90,0,0,.18);
+  }
+  .word {
+    position: absolute; left: 0; right: 0; top: 196px;
+    text-align: center;
+    font-family: "Manrope", "Arial Black", system-ui, sans-serif;
+    font-weight: 800;
+    font-size: 124px;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    color: #FFF7F2;
+    text-shadow: 0 3px 0 rgba(110,8,4,.28), 0 10px 24px rgba(110,8,4,.22);
+  }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+
+<script>
+(() => {
+  const W = 1080, H = 1350, CARD = 560;
+  const CX = 540, CY = 660;
+  const LOOP = 6;
+  const N = 40;
+
+  // ── детерминированный rng ──────────────────────────────
+  function rng(seed) {
+    return () => {
+      seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+      let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  const R = rng(20261014);
+  const rr = (a, b) => a + (b - a) * R();
+  const pick = arr => arr[Math.floor(R() * arr.length)];
+
+  // ── каракули (viewBox 0..100) ──────────────────────────
+  const f = n => n.toFixed(1);
+  const poly = pts => 'M' + pts.map(p => f(p[0]) + ' ' + f(p[1])).join(' L');
+
+  // рукописная строка: трохоида с петлями, разбита на «слова»
+  function cursive(x0, y0, x1) {
+    const out = [];
+    let x = x0;
+    while (x < x1 - 6) {
+      const loops = Math.floor(rr(2, 6));
+      const pts = [];
+      const a = rr(0.75, 0.95);
+      let th = 0;
+      const amp = [];
+      for (let k = 0; k <= loops; k++) amp.push(rr(1.6, 3.6));
+      const end = loops * Math.PI * 2;
+      while (th <= end) {
+        const k = Math.min(loops, Math.floor(th / (Math.PI * 2)));
+        const b = amp[k];
+        const px = x + a * th - b * Math.sin(th) * 0.9;
+        if (px > x1) break;
+        const py = y0 - b * (1 - Math.cos(th)) * 0.9 + Math.sin(th * 0.21) * 0.6;
+        pts.push([px, py]);
+        th += 0.32;
+      }
+      if (pts.length > 3) out.push(poly(pts));
+      x = (pts.length ? pts[pts.length - 1][0] : x) + rr(3.5, 6);
+    }
+    return out.join(' ');
+  }
+  function spiral(cx, cy, r) {
+    const pts = [];
+    const turns = rr(2.2, 3.2);
+    for (let th = 0; th < turns * Math.PI * 2; th += 0.25) {
+      const rad = r * th / (turns * Math.PI * 2) * (1 + 0.08 * Math.sin(th * 3));
+      pts.push([cx + rad * Math.cos(th), cy + rad * Math.sin(th) * 0.9]);
+    }
+    return poly(pts);
+  }
+  function circleScribble(cx, cy, rx, ry) {
+    const pts = [];
+    const turns = rr(1.6, 2.3);
+    const ph = rr(0, 6);
+    for (let th = 0; th < turns * Math.PI * 2; th += 0.18) {
+      const w = 1 + 0.07 * Math.sin(th * 2.3 + ph);
+      pts.push([cx + rx * w * Math.cos(th + ph), cy + ry * w * Math.sin(th + ph)]);
+    }
+    return poly(pts);
+  }
+  function chart(x0, y0, w, h) {
+    const axes = poly([[x0, y0 - h], [x0 + 0.6, y0], [x0 + w, y0 + 0.5]]);
+    const pts = [];
+    const n = 6;
+    for (let i = 0; i < n; i++) {
+      const t = i / (n - 1);
+      pts.push([x0 + 4 + t * (w - 8), y0 - 4 - (t * 0.75 + rr(-0.18, 0.18)) * (h - 8)]);
+    }
+    const last = pts[pts.length - 1];
+    return axes + ' ' + poly(pts) + ' ' + circleScribble(last[0], last[1], 5, 4.5);
+  }
+  function arrow(x0, y0, x1, y1) {
+    const mx = (x0 + x1) / 2 + rr(-8, 8), my = (y0 + y1) / 2 + rr(-10, -4);
+    const ang = Math.atan2(y1 - my, x1 - mx);
+    const hl = 5;
+    return `M${f(x0)} ${f(y0)} Q${f(mx)} ${f(my)} ${f(x1)} ${f(y1)} ` +
+      `M${f(x1 - hl * Math.cos(ang - 0.5))} ${f(y1 - hl * Math.sin(ang - 0.5))} L${f(x1)} ${f(y1)} ` +
+      `L${f(x1 - hl * Math.cos(ang + 0.5))} ${f(y1 - hl * Math.sin(ang + 0.5))}`;
+  }
+  function zigzag(x0, y0, w, h) {
+    const pts = [];
+    const rows = Math.floor(h / 2.6);
+    for (let i = 0; i < rows; i++) {
+      const y = y0 + i * 2.6;
+      pts.push([x0 + rr(0, 3), y], [x0 + w - rr(0, 4), y + 1.3]);
+    }
+    return poly(pts);
+  }
+  function underline(x0, x1, y) {
+    return poly([[x0, y], [(x0 + x1) / 2, y + rr(-1, 1)], [x1, y - rr(0, 1.5)]]) + ' ' +
+      poly([[x0 + 4, y + 3], [x1 - 6, y + 2.2]]);
+  }
+
+  function doodleSVG(inkMain, inkAlt) {
+    const parts = [];
+    const add = (d, ink) => parts.push(`<path d="${d}" stroke="${ink}"/>`);
+    const alt = R() < 0.18;
+    switch (Math.floor(R() * 5)) {
+      case 0:
+        for (let y = 30; y <= 30 + 13 * Math.floor(rr(3, 5)); y += 13) add(cursive(12, y, rr(70, 88)), inkMain);
+        add(circleScribble(rr(72, 80), rr(78, 84), 9, 7), alt ? inkAlt : inkMain);
+        break;
+      case 1:
+        add(chart(14, 72, rr(50, 62), 42), inkMain);
+        add(cursive(14, 88, rr(60, 84)), inkMain);
+        if (alt) add(underline(14, 50, 92), inkAlt);
+        break;
+      case 2:
+        add(spiral(rr(28, 36), rr(42, 48), rr(13, 17)), inkMain);
+        add(arrow(48, 46, rr(78, 86), rr(32, 40)), alt ? inkAlt : inkMain);
+        add(cursive(14, 76, 86), inkMain);
+        add(cursive(14, 89, rr(50, 74)), inkMain);
+        break;
+      case 3:
+        add(zigzag(14, 26, rr(34, 46), rr(22, 30)), inkMain);
+        add(cursive(14, 66, 86), inkMain);
+        add(cursive(14, 79, rr(55, 82)), inkMain);
+        break;
+      default:
+        add(circleScribble(50, 50, rr(28, 34), rr(20, 26)), alt ? inkAlt : inkMain);
+        add(cursive(30, 52, 70), inkMain);
+        add(underline(20, 80, 84), inkMain);
+    }
+    return `<svg viewBox="0 0 100 100" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${parts.join('')}</svg>`;
+  }
+
+  // ── стопка из 7 карточек (снизу вверх) ─────────────────
+  const slots = [
+    { dx: -34, dy: 50, r: -7.5 },
+    { dx: 30,  dy: 40, r: 6 },
+    { dx: -22, dy: 30, r: -4.5 },
+    { dx: 26,  dy: 20, r: 4.2 },
+    { dx: -12, dy: 12, r: -2.4 },
+    { dx: 12,  dy: 4,  r: 2.2 },
+    { dx: 0,   dy: -6, r: -1.2 },
+  ];
+  const papers = ['#FFFCF3', '#FFFFFF', '#E6F1FC', '#FFF8EA'];
+  const stackPapers = ['#FFFFFF', '#FFF8EA', '#FFFFFF', '#FFFCF3', '#FFFFFF', '#FFF8EA'];
+
+  // ── позиции «в воздухе»: дрожащая сетка 5×8 ────────────
+  const airSpots = [];
+  const cols = 5, rows = 8;
+  const cw = (W - 140) / cols, ch = (H - 160) / rows;
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++)
+      airSpots.push({
+        x: 70 + cw * (c + 0.5) + rr(-0.32, 0.32) * cw + (r % 2 ? cw * 0.18 : -cw * 0.18),
+        y: 80 + ch * (r + 0.5) + rr(-0.3, 0.3) * ch,
+      });
+  // перемешать
+  for (let i = airSpots.length - 1; i > 0; i--) {
+    const j = Math.floor(R() * (i + 1));
+    [airSpots[i], airSpots[j]] = [airSpots[j], airSpots[i]];
+  }
+
+  // ── карточки ───────────────────────────────────────────
+  const stage = document.getElementById('stage');
+  const cards = [];
+  const EXTRA = N - slots.length; // 33 стикера прячутся под стопку
+
+  // порядок приземления = z-порядок: сначала «лишние», потом стопка снизу вверх
+  const extraStarts = Array.from({ length: EXTRA }, () => rr(2.0, 3.15)).sort((a, b) => a - b);
+
+  for (let i = 0; i < N; i++) {
+    const isStack = i >= EXTRA;
+    const k = i - EXTRA;
+    const isTop = isStack && k === slots.length - 1;
+    const slot = isStack ? slots[k] : slots[0];
+    const spot = airSpots[i];
+
+    const el = document.createElement('div');
+    el.className = 'card' + (isTop ? ' top' : '');
+    const paper = isTop ? '' : (isStack ? stackPapers[k] : pick(papers));
+    el.style.setProperty('--paper', paper);
+    el.innerHTML =
+      `<div class="paper">${isTop
+        ? `<div class="word">ДЕНЬГИ</div><svg viewBox="0 0 100 100" fill="none" stroke="#FFF7F2" stroke-width="1.6" stroke-linecap="round" opacity=".9"><path d="${underline(22, 78, 63)}"/></svg>`
+        : doodleSVG('#1C2B4D', '#E2332B')}</div><div class="sheen"></div><div class="edge"></div>`;
+    el.style.zIndex = i + 1;
+    stage.appendChild(el);
+
+    cards.push({
+      el, isStack, isTop,
+      home: { x: CX + slot.dx, y: CY + slot.dy, rz: slot.r, rx: 0, ry: 0, s: 1 },
+      air: {
+        x: spot.x, y: spot.y,
+        rz: rr(-40, 40), s: isTop ? 0.4 : rr(0.27, 0.38),
+        ax: rr(14, 26), ay: rr(16, 30), arz: rr(8, 18), arx: rr(16, 30), ary: rr(18, 34),
+        px: rr(2.4, 3.4), py: rr(2.2, 3.1), pr: rr(2.6, 3.8),
+        p1: rr(0, 1), p2: rr(0, 1), p3: rr(0, 1),
+      },
+      burst: isTop ? 0.62 : (isStack ? 0.48 + k * 0.02 : rr(0.32, 0.5)),
+      burstDur: 1.15,
+      gather: isStack ? 3.25 + k * 0.12 : extraStarts[i],
+      gatherDur: isStack ? 1.0 : 0.85,
+      arc: rr(40, 90) * (R() < 0.5 ? -1 : 1),
+    });
+  }
+
+  // ── кривые ─────────────────────────────────────────────
+  const clamp01 = u => u < 0 ? 0 : u > 1 ? 1 : u;
+  const easeOut = u => 1 - Math.pow(1 - u, 3);
+  // пружина: перелёт ~14%, затухание, ровно 1 в конце
+  function spring(u) {
+    if (u <= 0) return 0;
+    if (u >= 1) return 1;
+    const s = 1 - Math.exp(-6.2 * u) * Math.cos(3.3 * Math.PI * u);
+    const e = Math.pow(u, 6);
+    return s * (1 - e) + e;
+  }
+  const TAU = Math.PI * 2;
+
+  function airState(c, t) {
+    const a = c.air;
+    return {
+      x: a.x + a.ax * Math.sin(TAU * (t / a.px + a.p1)),
+      y: a.y + a.ay * Math.sin(TAU * (t / a.py + a.p2)),
+      rz: a.rz + a.arz * Math.sin(TAU * (t / a.pr + a.p3)),
+      rx: a.arx * Math.sin(TAU * (t / a.py + a.p1)),
+      ry: a.ary * Math.cos(TAU * (t / a.px + a.p3)),
+      s: a.s,
+    };
+  }
+  const mix = (A, B, w) => ({
+    x: A.x + (B.x - A.x) * w, y: A.y + (B.y - A.y) * w,
+    rz: A.rz + (B.rz - A.rz) * w, rx: A.rx + (B.rx - A.rx) * w,
+    ry: A.ry + (B.ry - A.ry) * w, s: A.s + (B.s - A.s) * w,
+  });
+
+  function render(t) {
+    for (const c of cards) {
+      let st, h; // h — «высота полёта» 0..1 для тени
+      const ub = clamp01((t - c.burst) / c.burstDur);
+      const ug = (t - c.gather) / c.gatherDur;
+      if (t < c.gather) {
+        const w = easeOut(ub);
+        st = mix(c.home, airState(c, t), w);
+        h = w;
+      } else {
+        const u = clamp01(ug);
+        const w = spring(u);
+        st = mix(airState(c, t), c.home, w);
+        // дуга подлёта
+        st.y -= Math.abs(c.arc) * Math.sin(Math.PI * clamp01(u * 1.5)) * (1 - u);
+        st.x += c.arc * 0.5 * Math.sin(Math.PI * clamp01(u * 1.5)) * (1 - u);
+        h = 1 - clamp01(w);
+      }
+      h = clamp01(h);
+
+      // лишние стикеры, лёгшие точно под нижнюю карточку, скрываем
+      const hidden = !c.isStack && h === 0 && (t < c.burst || t >= c.gather + c.gatherDur);
+      c.el.style.visibility = hidden ? 'hidden' : 'visible';
+      if (hidden) continue;
+
+      c.el.style.transform =
+        `translate3d(${st.x.toFixed(2)}px, ${st.y.toFixed(2)}px, 0) ` +
+        `rotateZ(${st.rz.toFixed(2)}deg) rotateX(${st.rx.toFixed(2)}deg) rotateY(${st.ry.toFixed(2)}deg) ` +
+        `scale(${st.s.toFixed(4)})`;
+
+      const s = Math.max(st.s, 0.2);
+      const fade = c.isStack ? 1 : Math.max(h, 0.15);
+      const o1 = (3 + h * 26) / s, b1 = (6 + h * 30) / s;
+      const o2 = (18 + h * 46) / s, b2 = (34 + h * 44) / s;
+      c.el.style.boxShadow =
+        `0 ${o1.toFixed(1)}px ${b1.toFixed(1)}px rgba(var(--shadow), ${(0.16 * fade).toFixed(3)}),` +
+        `0 ${o2.toFixed(1)}px ${b2.toFixed(1)}px ${(-14 / s).toFixed(1)}px rgba(var(--shadow), ${((0.30 - h * 0.1) * fade).toFixed(3)})`;
+      // блик смещается вместе с наклоном
+      c.el.style.setProperty('--sa', (128 + st.ry * 1.2 - st.rx * 0.8).toFixed(1) + 'deg');
+    }
+  }
+
+  // ── масштаб под окно ───────────────────────────────────
+  function fit() {
+    const k = Math.min(innerWidth / W, innerHeight / H);
+    stage.style.transform = `scale(${k})`;
+    stage.style.marginRight = (W * k - W) + 'px';
+    stage.style.marginBottom = (H * k - H) + 'px';
+  }
+  addEventListener('resize', fit);
+  fit();
+
+  const frozen = new URLSearchParams(location.search).get('t');
+  render(frozen !== null ? ((parseFloat(frozen) % LOOP) + LOOP) % LOOP : 0);
+
+  document.fonts.ready.then(() => {
+    if (frozen !== null) return;
+    const t0 = performance.now();
+    const tick = now => {
+      render(((now - t0) / 1000) % LOOP);
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+})();
+</script>
+</body>
+</html>
